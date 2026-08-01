@@ -10,6 +10,7 @@ from fastapi.security import OAuth2PasswordBearer
 import stripe
 from dotenv import load_dotenv
 import os
+from models import Customer as CustomerModel, Service as ServiceModel, Booking as BookingModel
 
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -41,7 +42,16 @@ class Book(BaseModel):
     author : str
     price : float
     available : bool
-
+class Customer(BaseModel):
+    name : str
+    email : str
+class Service(BaseModel):
+    name : str
+    price : float
+class Booking(BaseModel):
+    customer_id : int
+    service_id : int
+    booking_time : str
 class UserRegister(BaseModel):
     username: str
     password: str
@@ -129,3 +139,61 @@ def create_checkout(book_id: int, db: Session = Depends(get_db)):
         cancel_url="http://localhost:8000/cancel",
     )
     return {"checkout_url": session.url}
+@app.post("/customers")
+def create_customer(customer: Customer, db: Session = Depends(get_db)):
+    new_customer = CustomerModel(name=customer.name, email=customer.email)
+    db.add(new_customer)
+    db.commit()
+    db.refresh(new_customer)
+    return new_customer
+
+@app.post("/services")
+def create_servicbook_ide(service: Service, db: Session = Depends(get_db)):
+    new_service = ServiceModel(name=service.name, price=service.price)
+    db.add(new_service)
+    db.commit()
+    db.refresh(new_service)
+    return new_service
+
+@app.post("/bookings")
+def create_booking(booking: Booking, db: Session = Depends(get_db)):
+    new_booking = BookingModel(customer_id=booking.customer_id, service_id=booking.service_id, booking_time=booking.booking_time)
+    db.add(new_booking)
+    db.commit()
+    db.refresh(new_booking)
+    return new_booking
+@app.get("/bookings/{booking_id}")
+def get_booking(booking_id: int, db: Session = Depends(get_db)):
+    booking = db.query(BookingModel).filter(BookingModel.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {
+        "booking_id": booking.id,
+        "customer_name": booking.customer.name,
+        "service_name": booking.service.name,
+        "booking_time": booking.booking_time
+    }
+@app.get("/bookings")
+def get_bookings(db: Session = Depends(get_db)):
+    bookings = db.query(BookingModel).all()
+    return bookings
+@app.put("/bookings/{booking_id}")
+def update_booking(booking_id: int, updated_booking: Booking, db: Session = Depends(get_db)):
+    booking = db.query(BookingModel).filter(BookingModel.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    booking.booking_time = updated_booking.booking_time
+    booking.service_id = updated_booking.service_id
+    booking.customer_id = updated_booking.customer_id
+    db.commit()
+    db.refresh(booking)
+    return booking
+@app.delete("/bookings/{booking_id}")
+def delete_booking(booking_id: int,db: Session = Depends(get_db)):
+    booking = db.query(BookingModel).filter(BookingModel.id == booking_id).first()
+    if booking is None:
+        raise HTTPException(status_code=404,detail="Booking not found")
+    else:
+        db.delete(booking)
+    db.commit()
+    return {"message": f"Booking {booking_id} deleted"} 
